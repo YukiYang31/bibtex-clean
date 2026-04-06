@@ -39,7 +39,7 @@ public final class BibtexClean {
   }
 
   /** Regex for the end of a BibTeX entry. */
-  private static Pattern entry_end =
+  private static final Pattern entry_end =
       Pattern.compile(
           "^[ \t]*"
               + ("("
@@ -54,7 +54,7 @@ public final class BibtexClean {
           Pattern.CASE_INSENSITIVE);
 
   /** Regex for a BibTeX string definition. */
-  private static Pattern stringDef =
+  private static final Pattern stringDef =
       Pattern.compile("^@string(\\{.*\\}|\\(.*\\))$", Pattern.CASE_INSENSITIVE);
 
   /**
@@ -63,7 +63,6 @@ public final class BibtexClean {
    * @param args names of the original files. The original files should be in a different directory
    *     than the working directory.
    */
-  @SuppressWarnings("PMD.AvoidReassigningLoopVariables")
   public static void main(String[] args) {
     for (String filename : args) {
       File inFile = new File(filename);
@@ -76,25 +75,33 @@ public final class BibtexClean {
       try (PrintWriter out = new PrintWriter(UtilPlume.bufferedFileWriter(outFile.toString()));
           EntryReader er = new EntryReader(filename)) {
         for (String line : er) {
-          if (line.equals("") || line.startsWith("%")) {
+          if (line.isEmpty() || line.startsWith("%")) {
             out.println(line);
           } else if (line.startsWith("@")) {
-            if (stringDef.matcher(line).matches()) {
-              out.println(line);
-            } else {
-              out.println(line);
+            out.println(line);
+            if (!stringDef.matcher(line).matches()) {
               String entryStartLine = line;
               int entryStartLineNumber = er.getLineNumber();
-              while (er.hasNext() && ((line = er.next()) != null)) {
-                out.println(line);
-                if (entry_end.matcher(line).lookingAt()) {
-                  break;
-                } else if (line.equals("")) {
+              boolean entryClosed = false;
+              while (er.hasNext()) {
+                String line2 = er.next(); // not null because `er.hasNext()` returned true
+                out.println(line2);
+                if (line2.isEmpty()) {
                   System.err.printf(
                       "%s:%d: unterminated entry: %s%n",
                       er.getFileName(), entryStartLineNumber, entryStartLine);
+                  entryClosed = true;
                   break;
                 }
+                if (entry_end.matcher(line2).lookingAt()) {
+                  entryClosed = true;
+                  break;
+                }
+              }
+              if (!entryClosed) {
+                System.err.printf(
+                    "%s:%d: unterminated entry at EOF: %s%n",
+                    er.getFileName(), entryStartLineNumber, entryStartLine);
               }
             }
           }
